@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">MomoEcho</string>
+
+    <string name="frg_browser_title">Select track</string>
+</resources>
