@@ -46,6 +46,9 @@ dependencies {
     annotationProcessor "androidx.room:room-compiler:$roomVersion"
     kapt "androidx.room:room-compiler:$roomVersion"
 
+    // https://mvnrepository.com/artifact/org.apache.commons/commons-csv
+    implementation "org.apache.commons:commons-csv:1.1"
+
     androidTestImplementation "androidx.test:runner:1.1.0-alpha4"
     androidTestImplementation "androidx.test.espresso:espresso-core:3.1.0-alpha4"
     testImplementation "org.robolectric:robolectric:3.5.1"
