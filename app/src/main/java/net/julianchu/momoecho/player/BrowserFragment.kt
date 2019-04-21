@@ -9,9 +9,13 @@ import android.preference.PreferenceManager
 import android.provider.OpenableColumns
 import android.view.Gravity
 import android.view.LayoutInflater
+import android.view.Menu
+import android.view.MenuInflater
+import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageButton
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.PopupMenu
 import androidx.appcompat.widget.Toolbar
@@ -28,6 +32,7 @@ import net.julianchu.momoecho.Const.Companion.PREF_KEY_TRACK_ID
 import net.julianchu.momoecho.R
 import net.julianchu.momoecho.StoreDispatcher
 import net.julianchu.momoecho.db.room.RoomStore
+import net.julianchu.momoecho.file.FileController
 import net.julianchu.momoecho.model.Track
 import net.julianchu.momoecho.player.ui.TrackAdapter
 import net.julianchu.momoecho.utils.showConfirmDialog
@@ -80,6 +85,8 @@ class BrowserFragment : Fragment() {
         }
 
         initWidgets(rootView)
+
+        setHasOptionsMenu(true)
         return rootView
     }
 
@@ -93,6 +100,49 @@ class BrowserFragment : Fragment() {
         if (reqCode == REQ_OPEN_AUDIO && resultCode == Activity.RESULT_OK) {
             val uri: Uri = data?.data ?: return
             onFileChoose(uri)
+        }
+    }
+
+    override fun onCreateOptionsMenu(menu: Menu?, inflater: MenuInflater?) {
+        inflater?.inflate(R.menu.browser_menu, menu)
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        when (item.itemId) {
+            R.id.menu_export -> exportToCsv()
+            R.id.menu_import -> importFromCsv()
+            else -> return false
+        }
+        return true
+    }
+
+    private fun exportToCsv() {
+        GlobalScope.launch(context = Dispatchers.IO) {
+            store.getTracks { tracks ->
+                store.getClips { clips ->
+                    FileController().saveToCsv(tracks, clips) { result, file ->
+                        Toast.makeText(
+                            requireContext(),
+                            "$result: Save to ${file.path}",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                }
+            }
+        }
+    }
+
+    private fun importFromCsv() {
+        GlobalScope.launch(context = Dispatchers.IO) {
+            // FIXME: should call refresh tracks after IO
+            FileController().readFromCsv { _, tracks, clips ->
+                for (track in tracks) {
+                    store.addTrack(track)
+                }
+                for (clip in clips) {
+                    store.upsertClip(clip)
+                }
+            }
         }
     }
 
