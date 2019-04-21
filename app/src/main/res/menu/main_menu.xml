@@ -6,14 +6,6 @@
         android:id="@+id/menu_choose"
         android:title="Choose track"
         app:showAsAction="never" />
-    <item
-        android:id="@+id/menu_save"
-        android:title="Save"
-        app:showAsAction="never" />
-    <item
-        android:id="@+id/menu_load"
-        android:title="Load"
-        app:showAsAction="never" />
 
     <item
         android:id="@+id/menu_period"

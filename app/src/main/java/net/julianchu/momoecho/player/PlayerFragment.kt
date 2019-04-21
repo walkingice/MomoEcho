@@ -124,8 +124,6 @@ class PlayerFragment : Fragment() {
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         when (item.itemId) {
             R.id.menu_choose -> openBrowserFragment(requireActivity().supportFragmentManager)
-            R.id.menu_save -> saveClips()
-            R.id.menu_load -> loadClips()
             R.id.menu_period -> showPeriodDialog()
             else -> return false
         }
