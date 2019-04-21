@@ -335,7 +335,7 @@ class MediaSessionController(
     private inner class BecomingNoisyReceiver : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             if (intent.action == AudioManager.ACTION_AUDIO_BECOMING_NOISY) {
-                pausePlayback()
+                onStop()
             }
         }
     }
