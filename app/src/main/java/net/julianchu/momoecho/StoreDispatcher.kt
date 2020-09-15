@@ -1,124 +1,68 @@
 package net.julianchu.momoecho
 
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.newSingleThreadContext
+import kotlinx.coroutines.withContext
 import net.julianchu.momoecho.db.room.RoomStore
+import net.julianchu.momoecho.model.AmplitudeDiagram
 import net.julianchu.momoecho.model.Clip
 import net.julianchu.momoecho.model.Track
 
 /**
  * A wrapper to run DB operation in another thread, and invoke callback in main thread
  */
-class StoreDispatcher(
-    private val store: RoomStore
-) {
-    private val dbScope = CoroutineScope(newSingleThreadContext("db"))
+class StoreDispatcher(private val store: RoomStore) {
 
-    fun addTrack(
-        track: Track,
-        callback: (Boolean) -> Unit = {}
-    ) {
-        dbScope.launch {
-            val result = store.addTrack(track)
-            launch(context = Dispatchers.Main) {
-                callback(result)
-            }
-        }
+    suspend fun addTrack(track: Track): Boolean = withContext(Dispatchers.IO) {
+        store.addTrack(track)
     }
 
-    fun getTracks(
-        callback: (MutableList<Track>) -> Unit = {}
-    ) {
-        dbScope.launch {
-            val result = store.getTracks()
-            launch(context = Dispatchers.Main) {
-                callback(result)
-            }
-        }
+    suspend fun getTracks(): MutableList<Track> = withContext(Dispatchers.IO) {
+        store.getTracks()
     }
 
-    fun removeTrack(
-        trackId: Long,
-        callback: (Boolean) -> Unit = {}
-    ) {
-        dbScope.launch {
-            val result = store.removeTrack(trackId)
-            launch(context = Dispatchers.Main) {
-                callback(result)
-            }
-        }
+    suspend fun removeTrack(trackId: Long): Boolean = withContext(Dispatchers.IO) {
+        store.removeTrack(trackId)
     }
 
-    fun upsertClip(
-        clip: Clip,
-        callback: (Boolean) -> Unit = {}
-    ) {
-        dbScope.launch {
-            val result = store.upsertClip(clip)
-            launch(context = Dispatchers.Main) {
-                callback(result)
-            }
-        }
+    suspend fun upsertClip(clip: Clip): Boolean = withContext(Dispatchers.IO) {
+        store.upsertClip(clip)
     }
 
-    fun removeClip(
-        id: Long,
-        callback: () -> Unit = {}
-    ) {
-        dbScope.launch {
-            store.removeClip(id)
-            launch(context = Dispatchers.Main) {
-                callback()
-            }
-        }
+    suspend fun removeClip(id: Long) = withContext(Dispatchers.IO) {
+        store.removeClip(id)
     }
 
-    fun removeClipsOfTrack(
-        trackId: Long,
-        callback: () -> Unit = {}
-    ) {
-        dbScope.launch {
-            store.removeClipsOfTrack(trackId)
-            launch(context = Dispatchers.Main) {
-                callback()
-            }
-        }
+    suspend fun removeClipsOfTrack(trackId: Long) = withContext(Dispatchers.IO) {
+        store.removeClipsOfTrack(trackId)
     }
 
-    fun getClip(
-        id: Long,
-        callback: (Clip?) -> Unit = {}
-    ) {
-        dbScope.launch {
-            val result = store.getClip(id)
-            launch(context = Dispatchers.Main) {
-                callback(result)
-            }
-        }
+    suspend fun getClip(id: Long): Clip? = withContext(Dispatchers.IO) {
+        store.getClip(id)
     }
 
-    fun getClips(
-        callback: (List<Clip>) -> Unit = {}
-    ) {
-        dbScope.launch {
-            val result = store.getClips()
-            launch(context = Dispatchers.Main) {
-                callback(result)
-            }
-        }
+    suspend fun getClips(): List<Clip> = withContext(Dispatchers.IO) {
+        store.getClips()
     }
 
-    fun queryClips(
-        trackId: Long,
-        callback: (List<Clip>) -> Unit = {}
-    ) {
-        dbScope.launch {
-            val result = store.queryClips(trackId)
-            launch(context = Dispatchers.Main) {
-                callback(result)
-            }
-        }
+    suspend fun queryClips(trackId: Long): List<Clip> = withContext(Dispatchers.IO) {
+        store.queryClips(trackId)
+    }
+
+    suspend fun addAmplitude(
+        amplitudeDiagram: AmplitudeDiagram
+    ): Boolean = withContext(Dispatchers.IO) {
+        store.addAmplitude(amplitudeDiagram)
+    }
+
+    suspend fun getAmplitude(md5: String): AmplitudeDiagram? = withContext(Dispatchers.IO) {
+        store.getAmplitude(md5)
+    }
+
+    suspend fun getAmplitudesMd5(): List<String> = withContext(Dispatchers.IO) {
+        store.getAmplitudesMd5()
+    }
+
+    suspend fun removeAmplitude(md5: String) = withContext(Dispatchers.IO) {
+        store.removeAmplitude(md5)
     }
 }

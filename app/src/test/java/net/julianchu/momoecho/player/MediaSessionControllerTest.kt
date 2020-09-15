@@ -1,7 +1,6 @@
 package net.julianchu.momoecho.player
 
 import android.support.v4.media.session.MediaSessionCompat
-import net.julianchu.momoecho.BuildConfig
 import net.julianchu.momoecho.model.Clip
 import net.julianchu.momoecho.utils.sortClips
 import org.junit.After
@@ -16,7 +15,7 @@ import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
-@Config(manifest = Config.NONE, constants = BuildConfig::class)
+@Config(manifest = Config.NONE)
 class MediaSessionControllerTest {
 
     private val context = RuntimeEnvironment.application

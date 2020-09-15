@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <declare-styleable name="VerticalSeekBar">
+        <attr name="max" format="integer" />
+        <attr name="highlight_color" format="color|reference" />
+        <attr name="bar_width" format="dimension" />
+        <attr name="bar_color" format="color|reference" />
+    </declare-styleable>
+</resources>

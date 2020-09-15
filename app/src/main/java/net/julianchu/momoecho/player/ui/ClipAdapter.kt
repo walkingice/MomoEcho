@@ -30,6 +30,7 @@ class ClipAdapter(
 
     override fun onBindViewHolder(holder: ClipViewHolder, position: Int) {
         val clip = data[position]
+        holder.itemView.elevation = if (clip.isPlaying) 40f else 15f
         holder.content.text = clip.content
         holder.extra.visibility = if (clip.isExpanding) View.VISIBLE else View.GONE
         holder.title.text = clip.displayText

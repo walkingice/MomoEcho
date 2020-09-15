@@ -1,43 +1,58 @@
 package net.julianchu.momoecho.editclip
 
 import android.annotation.SuppressLint
+import android.content.Context
+import android.net.Uri
 import android.os.Bundle
 import android.support.v4.media.session.MediaControllerCompat
 import android.support.v4.media.session.PlaybackStateCompat
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
-import android.view.ViewTreeObserver
-import android.widget.Button
 import android.widget.EditText
 import android.widget.ImageButton
-import android.widget.SeekBar
+import android.widget.ImageView
+import android.widget.ProgressBar
 import android.widget.TextView
+import androidx.core.view.isVisible
 import androidx.fragment.app.Fragment
-import androidx.lifecycle.ViewModelProviders
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.lifecycleScope
 import androidx.room.Room
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import net.julianchu.momoecho.Const
 import net.julianchu.momoecho.ProgressController
 import net.julianchu.momoecho.R
 import net.julianchu.momoecho.StoreDispatcher
 import net.julianchu.momoecho.db.room.RoomStore
+import net.julianchu.momoecho.model.AmplitudeDiagram
 import net.julianchu.momoecho.model.Clip
 import net.julianchu.momoecho.model.Track
+import net.julianchu.momoecho.utils.AudioUtil
+import net.julianchu.momoecho.utils.calculateMd5
 import net.julianchu.momoecho.utils.setClip
-import net.julianchu.momoecho.utils.showSingleInputDialog
 import net.julianchu.momoecho.utils.toMillis
 import net.julianchu.momoecho.utils.toReadable
 import net.julianchu.momoecho.viewmodel.MainViewModel
+import net.julianchu.momoecho.widget.VerticalSeekBar
+import net.julianchu.momoecho.widget.WaveformView
+import java.io.File
 
 
 fun createEditClipFragment(): EditClipFragment {
     return EditClipFragment()
 }
 
+private const val TAG = "EditClipFragment"
+
 class EditClipFragment : Fragment() {
 
-    private var zoomRate = 1f
+    private var resolution = 0.2f
+    private lateinit var roomStore: StoreDispatcher
     private lateinit var viewModel: MainViewModel
     private lateinit var currentTrack: Track
     private lateinit var clip: Clip
@@ -49,18 +64,32 @@ class EditClipFragment : Fragment() {
     private lateinit var btnSetEnd: View
     private lateinit var btnZoomIn: View
     private lateinit var btnZoomOut: View
-    private lateinit var seekBarStart: SeekBar
-    private lateinit var seekBarEnd: SeekBar
-    private lateinit var seekBarCurrent: SeekBar
+    private lateinit var seekBarLeft: VerticalSeekBar
+    private lateinit var seekBarRight: VerticalSeekBar
+    private lateinit var seekBarPlayback: VerticalSeekBar
     private lateinit var progressCtrl: ProgressController
     private lateinit var scrollView: ViewGroup
+    private lateinit var waveformView: WaveformView
+    private lateinit var loadingBg: View
+    private lateinit var loadingSpinner: ProgressBar
 
     private val ctrlCallback = CtrlCallback()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        viewModel = ViewModelProviders.of(activity!!).get(MainViewModel::class.java)
-        currentTrack = viewModel.currentTrack.value!!
+        roomStore = Room.databaseBuilder(
+            requireContext().applicationContext,
+            RoomStore::class.java,
+            RoomStore.DB_NAME
+        ).build().let { StoreDispatcher(it) }
+    }
+
+    override fun onAttach(context: Context) {
+        super.onAttach(context)
+        activity?.let {
+            viewModel = ViewModelProvider(it).get(MainViewModel::class.java)
+            currentTrack = viewModel.currentTrack.value!!
+        }
     }
 
     override fun onResume() {
@@ -87,7 +116,7 @@ class EditClipFragment : Fragment() {
         clip = viewModel.editClip ?: Clip(
             startTime = 0,
             endTime = viewModel.duration,
-            isEnabled = false,
+            isEnabled = true,
             trackId = currentTrack.id
         )
 
@@ -99,93 +128,57 @@ class EditClipFragment : Fragment() {
         btnSetEnd = view.findViewById(R.id.edit_clip_btn_set_end)
         btnZoomIn = view.findViewById(R.id.edit_clip_btn_zoom_in)
         btnZoomOut = view.findViewById(R.id.edit_clip_btn_zoom_out)
-        seekBarStart = view.findViewById(R.id.edit_clip_seek_bar_start)
-        seekBarEnd = view.findViewById(R.id.edit_clip_seek_bar_end)
-        seekBarCurrent = view.findViewById(R.id.edit_clip_seek_bar_current)
-        progressCtrl = ProgressController(seekBarCurrent)
+        seekBarLeft = view.findViewById(R.id.edit_clip_seek_bar_left)
+        seekBarRight = view.findViewById(R.id.edit_clip_seek_bar_right)
+        seekBarPlayback = view.findViewById(R.id.edit_clip_seek_bar_playback)
+        progressCtrl = ProgressController(seekBar = seekBarPlayback)
         scrollView = view.findViewById(R.id.edit_clip_seek_bar_container)
+        loadingSpinner = view.findViewById(R.id.loading_spinner)
+        loadingBg = view.findViewById(R.id.loading_container)
+        waveformView = view.findViewById(R.id.waveform_view)
+        loadAmplitudeForTrack(currentTrack)
 
-        seekBarStart.max = viewModel.duration
-        seekBarEnd.max = viewModel.duration
-        seekBarCurrent.max = viewModel.duration
+        seekBarLeft.max = viewModel.duration
+        seekBarRight.max = viewModel.duration
+        seekBarPlayback.max = viewModel.duration
 
-        seekBarStart.progress = clip.startTime
-        seekBarEnd.progress = clip.endTime
+        seekBarLeft.progress = clip.startTime
+        seekBarRight.progress = clip.endTime
 
-        seekBarCurrent.isEnabled = false
+        seekBarPlayback.isEnabled = false
 
+        resolution = waveformView.getResolution()
         btnZoomIn.setOnClickListener {
-            zoomRate += 0.5f
-            zoomRate = Math.min(zoomRate, 5.0f)
+            resolution += 0.1f
+            resolution = Math.min(resolution, 1.0f)
             onZoom()
         }
         btnZoomOut.setOnClickListener {
-            zoomRate -= 0.5f
-            zoomRate = Math.max(zoomRate, 1.0f)
+            resolution -= 0.1f
+            resolution = Math.max(resolution, 0.1f)
             onZoom()
         }
 
-        startView.setOnClickListener {
-            showTimeEditDialog(startView)
+        seekBarLeft.setOnSeekBarChangeListener { seekBar: VerticalSeekBar, progress: Int, fromUser: Boolean ->
+            updateStartAndEnd()
         }
 
-        endView.setOnClickListener {
-            showTimeEditDialog(endView)
+        seekBarRight.setOnSeekBarChangeListener { seekBar: VerticalSeekBar, progress: Int, fromUser: Boolean ->
+            updateStartAndEnd()
         }
 
-        seekBarStart.setOnSeekBarChangeListener(
-            object : SeekBar.OnSeekBarChangeListener {
-                override fun onProgressChanged(
-                    seekBar: SeekBar?,
-                    progress: Int,
-                    fromUser: Boolean
-                ) {
-                    val start = Math.min(progress, seekBarEnd.progress)
-                    seekBar?.progress = start
-                    startView.text = start.toReadable()
-                }
-
-                override fun onStartTrackingTouch(seekBar: SeekBar?) {
-                }
-
-                override fun onStopTrackingTouch(seekBar: SeekBar?) {
-                }
-            }
-        )
-
-        seekBarEnd.setOnSeekBarChangeListener(
-            object : SeekBar.OnSeekBarChangeListener {
-                override fun onProgressChanged(
-                    seekBar: SeekBar?,
-                    progress: Int,
-                    fromUser: Boolean
-                ) {
-                    val end = Math.max(progress, seekBarStart.progress)
-                    seekBar?.progress = end
-                    endView.text = end.toReadable()
-                }
-
-                override fun onStartTrackingTouch(seekBar: SeekBar?) {
-                }
-
-                override fun onStopTrackingTouch(seekBar: SeekBar?) {
-                }
-            }
-        )
-
-        seekBarStart.setOnTouchListener(TouchHack)
-        seekBarEnd.setOnTouchListener(TouchHack)
-        SeekBarsInitializer(scrollView, seekBarStart, seekBarEnd, seekBarCurrent)
+        seekBarLeft.setOnTouchListener(TouchHack)
+        seekBarRight.setOnTouchListener(TouchHack)
 
         startView.text = clip.startTime.toReadable()
         endView.text = clip.endTime.toReadable()
         editContent.setText(clip.content)
 
-        view.findViewById<Button>(R.id.button_dismiss).setOnClickListener {
+        view.findViewById<View>(R.id.button_dismiss).setOnClickListener {
             finishSelf(false)
         }
 
-        view.findViewById<Button>(R.id.button_ok).setOnClickListener {
+        view.findViewById<View>(R.id.button_ok).setOnClickListener {
             clip.startTime = startView.text.toString().toMillis()
             clip.endTime = endView.text.toString().toMillis()
             clip.content = editContent.text.toString()
@@ -194,14 +187,14 @@ class EditClipFragment : Fragment() {
 
         btnPlay.tag = false
         btnPlay.setOnClickListener {
-            if (seekBarEnd.progress - seekBarStart.progress > 10) {
+            if (Math.abs(seekBarRight.progress - seekBarLeft.progress) > 10) {
                 val isPlaying = it.tag as? Boolean ?: false
                 if (isPlaying) {
                     viewModel.mediaCtrl.transportControls?.pause()
                 } else {
                     val now = Clip(
-                        startTime = seekBarStart.progress,
-                        endTime = seekBarEnd.progress,
+                        startTime = Math.min(seekBarLeft.progress, seekBarRight.progress),
+                        endTime = Math.max(seekBarLeft.progress, seekBarRight.progress),
                         trackId = currentTrack.id
                     )
                     viewModel.mediaCtrl.sendCommand(
@@ -214,70 +207,156 @@ class EditClipFragment : Fragment() {
         }
 
         btnSetStart.setOnClickListener {
-            seekBarStart.progress = seekBarCurrent.progress
-            startView.text = seekBarCurrent.progress.toReadable()
+            seekBarLeft.progress = seekBarPlayback.progress
+            startView.text = seekBarPlayback.progress.toReadable()
         }
 
         btnSetEnd.setOnClickListener {
             viewModel.mediaCtrl.transportControls?.pause()
-            seekBarEnd.progress = seekBarCurrent.progress
-            endView.text = seekBarCurrent.progress.toReadable()
+            seekBarRight.progress = seekBarPlayback.progress
+            endView.text = seekBarPlayback.progress.toReadable()
         }
+
+        view.findViewById<ImageView>(R.id.top_bar_toggle).setOnClickListener { toggleTopBar(view) }
+
+        updateStartAndEnd()
+    }
+
+    private fun loadAmplitudeForTrack(track: Track) {
+        viewLifecycleOwner.lifecycleScope.launch {
+            showLoading()
+            val md5 = getFileMd5(track.uri)
+            loadAmplitudeDiagram(md5, track)?.let { waveformView.setDiagram(it) }
+            hidLoading()
+        }
+    }
+
+    private suspend fun loadAmplitudeDiagram(md5: String?, track: Track): AmplitudeDiagram? {
+        md5 ?: return null
+        val amplitude = loadAmplitudeDiagramFromDb(md5)
+        return if (amplitude != null) {
+            Log.d(TAG, "load from DB: $md5")
+            amplitude
+        } else {
+            loadAmplitudeDiagramFromStorage(md5, track)
+        }
+    }
+
+    private suspend fun loadAmplitudeDiagramFromDb(md5: String): AmplitudeDiagram? {
+        return roomStore.getAmplitude(md5)
+    }
+
+    private suspend fun loadAmplitudeDiagramFromStorage(
+        md5: String,
+        track: Track
+    ): AmplitudeDiagram? {
+        val cache = prepareAmplitude(md5, track.uri)
+        Log.d(TAG, "${cache?.size}")
+
+        val mediaFormatData = AudioUtil.getMediaFormatData(requireContext(), track.uri)
+        if (mediaFormatData != null && cache != null) {
+            val amplitudeDiagram = AudioUtil.amplitudeToDiagram(md5, mediaFormatData, cache)
+            Log.d(TAG, "save to DB: $md5")
+            saveAmplitudeToDb(amplitudeDiagram)
+            return amplitudeDiagram
+        }
+        return null
+    }
+
+    private suspend fun saveAmplitudeToDb(amplitude: AmplitudeDiagram) {
+        roomStore.addAmplitude(amplitude)
+    }
+
+    private suspend fun prepareAmplitude(
+        md5: String,
+        uri: Uri
+    ): ShortArray? = withContext(Dispatchers.IO) {
+        val cacheFile = File(requireContext().cacheDir, "$md5.pcm")
+        // val cacheFile = File("/sdcard/Music/my_$md5.pcm")
+        val useCache = true
+        if (useCache && cacheFile.exists() && cacheFile.length() > 0) {
+            Log.d(TAG, "cache hit: $md5")
+            val byteArray = cacheFile.readBytes()
+            AudioUtil.pcmToAmplitude(byteArray)
+        } else {
+            Log.d(TAG, "no cache, decoding: $md5")
+            val data =
+                AudioUtil.decodeToAmplitude(requireContext(), uri, ::decodeProgress)?.also {
+                    val pcm = AudioUtil.amplitudeToPcm(it)
+                    cacheFile.writeBytes(pcm)
+                }
+            data
+        }
+    }
+
+    private fun decodeProgress(decodeProgress: Float) {
+        val progress = (decodeProgress * 100).toInt()
+        if ((progress - loadingSpinner.progress) > 3) {
+            viewLifecycleOwner.lifecycleScope.launch {
+                updateLoadingProgress(progress)
+            }
+        }
+    }
+
+    // TODO: remove this
+    private suspend fun updateLoadingProgress(progress: Int) = withContext(Dispatchers.Main) {
+        loadingSpinner.progress = progress
+    }
+
+    private fun showLoading() {
+        loadingBg.isVisible = true
+        loadingBg.setOnClickListener {}
+        loadingSpinner.isVisible = true
+        loadingSpinner.progress = 0
+        loadingSpinner.max = 100
+    }
+
+    private fun hidLoading() {
+        loadingBg.isVisible = false
+        loadingSpinner.isVisible = false
+    }
+
+    private suspend fun getFileMd5(uri: Uri): String? = withContext(Dispatchers.IO) {
+        calculateMd5(requireContext(), uri)
+    }
+
+    private fun updateStartAndEnd() {
+        val startSeekBar =
+            if (seekBarLeft.progress < seekBarRight.progress) seekBarLeft else seekBarRight
+        val endSeekBar = if (startSeekBar == seekBarLeft) seekBarRight else seekBarLeft
+
+        val start = startSeekBar.progress
+        val end = endSeekBar.progress
+        seekBarPlayback.setHighLightRange(start, end)
+        startView.text = start.toReadable()
+        endView.text = end.toReadable()
     }
 
     private fun onZoom() {
-        val width = scrollView.measuredWidth - scrollView.paddingStart - scrollView.paddingRight
-        seekBarStart.layoutParams.also {
-            it.width = (width * zoomRate).toInt()
-        }
-        seekBarStart.requestLayout()
-        seekBarEnd.layoutParams.also {
-            it.width = (width * zoomRate).toInt()
-        }
-        seekBarEnd.requestLayout()
-        seekBarCurrent.layoutParams.also {
-            it.width = (width * zoomRate).toInt()
-        }
-        seekBarCurrent.requestLayout()
+        waveformView.setResolution(resolution)
+        waveformView.requestLayout()
+        seekBarLeft.requestLayout()
+        seekBarRight.requestLayout()
+        seekBarPlayback.requestLayout()
     }
 
-    private fun showTimeEditDialog(tv: TextView) {
-        val editText = showSingleInputDialog(
-            requireContext(),
-            R.layout.edit_dialog
-        ) {
-            it?.let {
-                val converted = it.toMillis()
-                if (converted == 0) {
-                    // wrong type
-                } else {
-                    tv.text = converted.toReadable()
-                    if (tv == startView) {
-                        seekBarStart.progress = Math.min(converted, seekBarEnd.progress)
-                    } else if (tv == endView) {
-                        seekBarEnd.progress = Math.max(converted, seekBarStart.progress)
-                    }
-                }
-            }
-        }
-        editText.setText(tv.text.toString().toMillis().toReadable())
+
+    private fun toggleTopBar(rootView: View) {
+        val toggle = rootView.findViewById<ImageView>(R.id.top_bar_toggle)
+        val isOn = (toggle.rotation == 0f)
+        toggle.rotation = if (isOn) 180f else 0f
+        rootView.findViewById<View>(R.id.edit_title_start).isVisible = isOn
+        rootView.findViewById<View>(R.id.edit_title_end).isVisible = isOn
+        rootView.findViewById<View>(R.id.edit_title_content).isVisible = isOn
+        rootView.findViewById<View>(R.id.edit_content).isVisible = isOn
     }
 
     private fun finishSelf(save: Boolean) {
         if (save) {
-            val store = Room.databaseBuilder(
-                requireContext().applicationContext,
-                RoomStore::class.java,
-                RoomStore.DB_NAME
-            )
-                .build()
-                .let { StoreDispatcher(it) }
-
-            store.upsertClip(clip) {
+            viewLifecycleOwner.lifecycleScope.launch {
+                roomStore.upsertClip(clip)
                 val extras = Bundle().also { it.putLong(Const.EXTRA_KEY_CLIP, clip.id) }
-                viewModel.mediaCtrl.sendCommand(
-                    Const.COMMAND_UPDATE_CLIP, extras, null
-                )
+                viewModel.mediaCtrl.sendCommand(Const.COMMAND_UPDATE_CLIP, extras, null)
                 activity?.supportFragmentManager?.popBackStack()
             }
         } else {
@@ -304,52 +383,20 @@ class EditClipFragment : Fragment() {
         }
     }
 
-    private class SeekBarsInitializer(
-        val container: View,
-        val seekBarStart: SeekBar,
-        val seekBarEnd: SeekBar,
-        val seekBarCurrent: SeekBar
-    ) : ViewTreeObserver.OnGlobalLayoutListener {
-        init {
-            container.viewTreeObserver.addOnGlobalLayoutListener(this)
-        }
-
-        override fun onGlobalLayout() {
-            val width = container.measuredWidth
-            val padding = container.paddingStart + container.paddingEnd
-            seekBarStart.layoutParams.also {
-                it.width = width - padding
-            }
-            seekBarStart.requestLayout()
-            seekBarEnd.layoutParams.also {
-                it.width = width - padding
-            }
-            seekBarEnd.requestLayout()
-
-            seekBarCurrent.layoutParams.also {
-                it.width = width - padding
-            }
-            seekBarCurrent.requestLayout()
-
-            container.viewTreeObserver.removeOnGlobalLayoutListener(this)
-        }
-    }
-
     inner class CtrlCallback : MediaControllerCompat.Callback() {
         override fun onPlaybackStateChanged(ps: PlaybackStateCompat?) {
             super.onPlaybackStateChanged(ps)
-            if (ps != null) {
-                when (ps.state) {
-                    PlaybackStateCompat.STATE_PLAYING -> {
-                        btnPlay.setImageResource(R.drawable.ic_pause)
-                        btnPlay.tag = true
-                        progressCtrl.startAt(ps.position.toInt())
-                    }
-                    PlaybackStateCompat.STATE_PAUSED -> {
-                        btnPlay.setImageResource(R.drawable.ic_play)
-                        btnPlay.tag = false
-                        progressCtrl.pauseAt(ps.position.toInt())
-                    }
+            ps ?: return
+            when (ps.state) {
+                PlaybackStateCompat.STATE_PLAYING -> {
+                    btnPlay.setImageResource(R.drawable.ic_pause)
+                    btnPlay.tag = true
+                    progressCtrl.startAt(ps.position.toInt())
+                }
+                PlaybackStateCompat.STATE_PAUSED -> {
+                    btnPlay.setImageResource(R.drawable.ic_play)
+                    btnPlay.tag = false
+                    progressCtrl.pauseAt(ps.position.toInt())
                 }
             }
         }

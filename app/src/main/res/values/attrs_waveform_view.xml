@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <declare-styleable name="WaveformView">
+        <attr name="resolution" format="float" />
+        <attr name="precision" format="float" />
+        <attr name="stroke_width" format="dimension" />
+        <attr name="tint" format="color|reference" />
+    </declare-styleable>
+</resources>

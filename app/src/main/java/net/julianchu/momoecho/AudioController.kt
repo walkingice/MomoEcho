@@ -7,9 +7,7 @@ import kotlinx.coroutines.*
 import net.julianchu.momoecho.model.Clip
 import java.util.*
 
-class AudioController(
-    private val player: MediaPlayer
-) {
+class AudioController(private val player: MediaPlayer) {
 
     init {
         player.setOnErrorListener { player, _, _ ->
@@ -19,10 +17,10 @@ class AudioController(
     }
 
     private val playbackScope = CoroutineScope(newSingleThreadContext("playback"))
-    private var playbackJob: Job? = null
+    private var scheduledCallbackJob: Job? = null
     private var progressTimer: Timer? = null
     private var currentClip: Clip? = null
-    private var clipPlaybackListener: (() -> Unit)? = null
+    private var clipPlaybackListener: (() -> Unit) = {}
     private var state = State.IDLE
 
     fun setDataSource(context: Context, uri: Uri) {
@@ -41,9 +39,9 @@ class AudioController(
         playerStart()
         changeState(State.STARTED)
         val length = (clip.endTime - clip.startTime).toLong()
-        playbackJob = buildDelayJob(playbackScope, length) {
+        scheduledCallbackJob = launchDelayCallback(playbackScope, length) {
             pausePlayback()
-            clipPlaybackListener?.let { it() }
+            clipPlaybackListener()
             finishCallback()
         }
     }
@@ -61,9 +59,9 @@ class AudioController(
         val clip = currentClip
         if (clip != null) {
             val length = (clip.endTime - player.currentPosition).toLong()
-            playbackJob = buildDelayJob(playbackScope, length) {
+            scheduledCallbackJob = launchDelayCallback(playbackScope, length) {
                 pausePlayback()
-                clipPlaybackListener?.let { it() }
+                clipPlaybackListener()
                 finishCallback()
             }
         }
@@ -76,7 +74,7 @@ class AudioController(
     }
 
     fun setClipPlaybackListener(listener: (() -> Unit)?) {
-        clipPlaybackListener = listener
+        clipPlaybackListener = listener ?: {}
     }
 
     fun getCurrentPosition(): Int = player.currentPosition
@@ -89,10 +87,10 @@ class AudioController(
     }
 
     private fun cancelTimer() {
-        GlobalScope.launch {
-            playbackJob?.cancel()
-            playbackJob = null
+        if (scheduledCallbackJob?.isActive == true) {
+            scheduledCallbackJob?.cancel()
         }
+        scheduledCallbackJob = null
 
         if (progressTimer != null) {
             progressTimer?.cancel()
@@ -149,7 +147,7 @@ class AudioController(
         }
     }
 
-    private fun buildDelayJob(
+    private fun launchDelayCallback(
         scope: CoroutineScope,
         period: Long,
         callback: () -> Unit = {}

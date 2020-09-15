@@ -3,11 +3,6 @@
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
     <item
-        android:id="@+id/menu_choose"
-        android:title="Choose track"
-        app:showAsAction="never" />
-
-    <item
         android:id="@+id/menu_period"
         android:title="Period"
         app:showAsAction="never" />

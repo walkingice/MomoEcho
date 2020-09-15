@@ -9,8 +9,9 @@ import android.support.v4.media.session.MediaControllerCompat
 import android.view.ViewGroup
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
-import androidx.lifecycle.*
-import kotlinx.coroutines.GlobalScope
+import androidx.lifecycle.Observer
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import net.julianchu.momoecho.model.Track
@@ -19,10 +20,9 @@ import net.julianchu.momoecho.viewmodel.MainViewModel
 
 private const val REQ_EXTERNAL_STORAGE_PERMISSION = 0xAA02
 
-class MainActivity : AppCompatActivity(), LifecycleOwner {
+class MainActivity : AppCompatActivity() {
 
     private lateinit var mediaBrowser: MediaBrowserCompat
-    private val lifecycleRegistry = LifecycleRegistry(this)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -43,8 +43,6 @@ class MainActivity : AppCompatActivity(), LifecycleOwner {
         }
     }
 
-    override fun getLifecycle(): Lifecycle = lifecycleRegistry
-
     override fun onRequestPermissionsResult(
         requestCode: Int,
         permissions: Array<out String>,
@@ -56,8 +54,7 @@ class MainActivity : AppCompatActivity(), LifecycleOwner {
                 if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                     onPermissionGranted()
                 } else {
-                    // FIXME: avoid using globe scope
-                    GlobalScope.launch {
+                    lifecycleScope.launch {
                         delay(1000)
                         ensurePermission()
                     }
@@ -75,7 +72,7 @@ class MainActivity : AppCompatActivity(), LifecycleOwner {
             true
         } else {
             requestPermissions(
-                arrayOf(android.Manifest.permission.WRITE_EXTERNAL_STORAGE),
+                arrayOf(Manifest.permission.WRITE_EXTERNAL_STORAGE),
                 REQ_EXTERNAL_STORAGE_PERMISSION
             )
             false
@@ -83,10 +80,18 @@ class MainActivity : AppCompatActivity(), LifecycleOwner {
     }
 
     private fun onPermissionGranted() {
-        val viewModel = ViewModelProviders.of(this).get(MainViewModel::class.java)
+        val viewModel = initViewModel()
+        startPlaybackService(viewModel)
+    }
+
+    private fun initViewModel(): MainViewModel {
+        return ViewModelProvider(this).get(MainViewModel::class.java)
+    }
+
+    private fun startPlaybackService(viewModel: MainViewModel) {
         val callback = ConnectionCallback(viewModel)
-        val comp = ComponentName(this, PlaybackService::class.java)
-        mediaBrowser = MediaBrowserCompat(this, comp, callback, null)
+        val serviceComponent = ComponentName(this, PlaybackService::class.java)
+        mediaBrowser = MediaBrowserCompat(this, serviceComponent, callback, null)
         mediaBrowser.connect()
     }
 
@@ -95,8 +100,7 @@ class MainActivity : AppCompatActivity(), LifecycleOwner {
     ) : MediaBrowserCompat.ConnectionCallback() {
 
         private val observer = Observer<Track> { track ->
-            val bundle = Bundle()
-            bundle.putLong(Const.EXTRA_KEY_TRACK, track.id)
+            val bundle = Bundle().also { it.putLong(Const.EXTRA_KEY_TRACK, track.id) }
             viewModel.mediaCtrl.transportControls?.prepareFromUri(track.uri, bundle)
         }
 
@@ -107,7 +111,7 @@ class MainActivity : AppCompatActivity(), LifecycleOwner {
                 mediaBrowser.sessionToken
             )
             findViewById<ViewGroup>(android.R.id.content).removeAllViews()
-            initPlayerFragment(supportFragmentManager)
+            initBrowserFragment(supportFragmentManager)
             viewModel.currentTrack.observe(this@MainActivity, observer)
         }
 

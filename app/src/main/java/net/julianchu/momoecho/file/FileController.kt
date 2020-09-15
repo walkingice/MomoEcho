@@ -4,6 +4,7 @@ import android.os.Environment
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import net.julianchu.momoecho.model.Clip
 import net.julianchu.momoecho.model.Track
 import net.julianchu.momoecho.utils.readCsv
@@ -36,15 +37,8 @@ class FileController {
         }
     }
 
-    fun readFromCsv(
-        callback: (File, List<Track>, List<Clip>) -> Unit = { _, _, _ -> }
-    ) {
-
-        GlobalScope.launch(context = Dispatchers.IO) {
-            val result = readCsv(file)
-            GlobalScope.launch(context = Dispatchers.Main) {
-                callback(file, result.second, result.third)
-            }
-        }
+    suspend fun readFromCsv(): Triple<File, List<Track>, List<Clip>> = withContext(Dispatchers.IO) {
+        val result = readCsv(file)
+        Triple(file, result.second, result.third)
     }
 }

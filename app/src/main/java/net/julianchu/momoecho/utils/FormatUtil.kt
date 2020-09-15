@@ -8,11 +8,25 @@ private val pattern = Pattern.compile(regex)
 
 fun Int.toReadable(): String {
     val millis = this.toLong()
+    return millis.toReadable()
+}
+
+fun Long.toReadable(): String {
+    val millis = this
     return String.format(
         "%02d:%02d:%02d.%03d", TimeUnit.MILLISECONDS.toHours(millis),
         TimeUnit.MILLISECONDS.toMinutes(millis) % TimeUnit.HOURS.toMinutes(1),
         TimeUnit.MILLISECONDS.toSeconds(millis) % TimeUnit.MINUTES.toSeconds(1),
         millis - TimeUnit.MILLISECONDS.toSeconds(millis) * 1000
+    )
+}
+
+fun Long.toReadableShort(): String {
+    val millis = this
+    return String.format(
+        "%02d:%02d:%02d", TimeUnit.MILLISECONDS.toHours(millis),
+        TimeUnit.MILLISECONDS.toMinutes(millis) % TimeUnit.HOURS.toMinutes(1),
+        TimeUnit.MILLISECONDS.toSeconds(millis) % TimeUnit.MINUTES.toSeconds(1)
     )
 }
 

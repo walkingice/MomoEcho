@@ -4,36 +4,104 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_margin="5dp"
+    android:layout_margin="@dimen/list_container_padding"
     app:cardElevation="5dp">
 
     <androidx.constraintlayout.widget.ConstraintLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:background="?android:selectableItemBackground"
-        android:minHeight="80dp"
-        android:padding="10dp">
+        android:minHeight="70dp">
+
+        <androidx.constraintlayout.widget.Guideline
+            android:id="@+id/track_guideline_1"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:orientation="vertical"
+            app:layout_constraintGuide_begin="65dp" />
+
+        <androidx.constraintlayout.widget.Guideline
+            android:id="@+id/track_guideline_2"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:orientation="vertical"
+            app:layout_constraintGuide_end="50dp" />
+
+        <ImageView
+            android:id="@+id/track_thumbnail"
+            android:layout_width="50dp"
+            android:layout_height="0dp"
+            android:background="@android:color/darker_gray"
+            android:scaleType="centerCrop"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            tools:src="@tools:sample/backgrounds/scenic" />
 
         <TextView
-            android:id="@android:id/title"
+            android:id="@+id/track_album"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/list_content_margin"
+            android:textColor="@android:color/darker_gray"
+            android:textSize="12sp"
+            app:layout_constraintBottom_toTopOf="@id/track_title"
+            app:layout_constraintEnd_toEndOf="@id/track_title"
+            app:layout_constraintHorizontal_bias="0"
+            app:layout_constraintStart_toStartOf="@id/track_title"
+            app:layout_constraintTop_toTopOf="parent"
+            tools:text="Album" />
+
+        <TextView
+            android:id="@+id/track_title"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:textSize="20sp"
-            app:layout_constraintBottom_toTopOf="@android:id/text1"
-            app:layout_constraintLeft_toLeftOf="parent"
-            app:layout_constraintTop_toTopOf="parent"
-            tools:text="@tools:sample/lorem" />
+            app:layout_constraintBottom_toTopOf="@id/track_filename"
+            app:layout_constraintEnd_toStartOf="@id/track_guideline_2"
+            app:layout_constraintHorizontal_bias="0"
+            app:layout_constraintStart_toEndOf="@id/track_guideline_1"
+            app:layout_constraintTop_toBottomOf="@id/track_album"
+            tools:text="Track Name" />
 
         <TextView
-            android:id="@android:id/text1"
+            android:id="@+id/track_filename"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:layout_marginBottom="@dimen/list_content_margin"
             android:textColor="@android:color/darker_gray"
             android:textSize="12sp"
             app:layout_constraintBottom_toBottomOf="parent"
-            app:layout_constraintLeft_toLeftOf="parent"
-            app:layout_constraintTop_toBottomOf="@android:id/title"
-            tools:text="@tools:sample/lorem" />
+            app:layout_constraintHorizontal_bias="0"
+            app:layout_constraintStart_toStartOf="@id/track_title"
+            app:layout_constraintTop_toTopOf="@id/track_filename"
+            tools:text="filename.mp3" />
+
+        <TextView
+            android:id="@+id/track_duration"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="@dimen/list_content_margin"
+            android:layout_marginBottom="@dimen/list_content_margin"
+            android:textColor="@android:color/darker_gray"
+            android:textSize="12sp"
+            app:layout_constraintBaseline_toBaselineOf="@id/track_title"
+            app:layout_constraintEnd_toEndOf="parent"
+            tools:text="00:23:11" />
+
+        <TextView
+            android:id="@+id/track_clips"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="@dimen/list_content_margin"
+            android:layout_marginBottom="@dimen/list_content_margin"
+            android:textColor="@android:color/darker_gray"
+            android:textSize="12sp"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/track_title"
+            tools:text="3 clips" />
+
     </androidx.constraintlayout.widget.ConstraintLayout>
 
 </com.google.android.material.card.MaterialCardView>

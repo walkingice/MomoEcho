@@ -25,6 +25,12 @@
             </intent-filter>
         </activity>
 
+        <activity android:name=".EditorActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+            </intent-filter>
+        </activity>
+
         <service
             android:name=".player.PlaybackService"
             android:enabled="true"
@@ -35,5 +41,6 @@
         </service>
 
     </application>
+
 
 </manifest>

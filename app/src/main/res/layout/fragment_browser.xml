@@ -19,24 +19,95 @@
         app:layout_constraintTop_toTopOf="parent"
         app:popupTheme="@style/ToolbarPopupTheme" />
 
-    <com.google.android.material.floatingactionbutton.FloatingActionButton
-        style="@style/FloatingActionButtonTheme"
-        android:id="@+id/fab"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_margin="25dp"
-        android:src="@drawable/ic_add"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintRight_toRightOf="parent" />
-
     <androidx.recyclerview.widget.RecyclerView
         android:id="@android:id/list"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:padding="10dp"
-        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintBottom_toTopOf="@id/bottom_bar"
         app:layout_constraintLeft_toLeftOf="parent"
         app:layout_constraintRight_toRightOf="parent"
         app:layout_constraintTop_toBottomOf="@id/toolbar" />
+
+    <View
+        android:id="@+id/bottom_bar_shadow"
+        android:layout_width="0dp"
+        android:layout_height="10dp"
+        android:background="@drawable/shadow"
+        android:visibility="gone"
+        app:layout_constraintBottom_toTopOf="@id/bottom_bar"
+        app:layout_constraintEnd_toEndOf="@id/bottom_bar"
+        app:layout_constraintStart_toStartOf="@id/bottom_bar"
+        tools:visibility="visible" />
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/bottom_bar"
+        android:layout_width="0dp"
+        android:layout_height="75dp"
+        android:background="@android:color/white"
+        android:clickable="true"
+        android:elevation="10dp"
+        android:focusable="true"
+        android:foreground="?attr/selectableItemBackground"
+        android:orientation="vertical"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        tools:visibility="visible">
+
+        <ImageView
+            android:layout_width="45dp"
+            android:layout_height="45dp"
+            android:contentDescription="play selected track"
+            android:src="@drawable/ic_arrow_right"
+            android:tint="#888"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            tools:ignore="HardcodedText" />
+
+        <TextView
+            android:id="@+id/bottom_bar_album"
+            android:textSize="12sp"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="@android:color/darker_gray"
+            app:layout_constraintBottom_toTopOf="@id/bottom_bar_title"
+            app:layout_constraintStart_toStartOf="@id/bottom_bar_title"
+            tools:text="album" />
+
+        <TextView
+            android:id="@+id/bottom_bar_title"
+            style="?android:titleTextStyle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="@dimen/list_margin"
+            android:textStyle="bold"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            tools:text="selected track" />
+
+        <TextView
+            android:id="@+id/bottom_bar_filename"
+            android:textSize="12sp"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="@android:color/darker_gray"
+            app:layout_constraintStart_toStartOf="@id/bottom_bar_title"
+            app:layout_constraintTop_toBottomOf="@id/bottom_bar_title"
+            tools:text="filename.mp3" />
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+    <com.google.android.material.floatingactionbutton.FloatingActionButton
+        android:id="@+id/fab"
+        style="@style/FloatingActionButtonTheme"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_margin="25dp"
+        android:elevation="15dp"
+        android:src="@drawable/ic_add"
+        app:layout_constraintBottom_toTopOf="@id/bottom_bar"
+        app:layout_constraintStart_toStartOf="parent" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>

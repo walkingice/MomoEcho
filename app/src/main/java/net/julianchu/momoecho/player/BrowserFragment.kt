@@ -2,11 +2,11 @@ package net.julianchu.momoecho.player
 
 import android.app.Activity
 import android.content.ContentResolver
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.preference.PreferenceManager
-import android.provider.OpenableColumns
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.Menu
@@ -15,12 +15,16 @@ import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageButton
+import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.PopupMenu
 import androidx.appcompat.widget.Toolbar
+import androidx.core.view.isVisible
 import androidx.fragment.app.Fragment
-import androidx.lifecycle.ViewModelProviders
+import androidx.lifecycle.Observer
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.room.Room
@@ -34,7 +38,10 @@ import net.julianchu.momoecho.StoreDispatcher
 import net.julianchu.momoecho.db.room.RoomStore
 import net.julianchu.momoecho.file.FileController
 import net.julianchu.momoecho.model.Track
+import net.julianchu.momoecho.openPlayerFragment
 import net.julianchu.momoecho.player.ui.TrackAdapter
+import net.julianchu.momoecho.utils.TrackUtil
+import net.julianchu.momoecho.utils.calculateMd5
 import net.julianchu.momoecho.utils.showConfirmDialog
 import net.julianchu.momoecho.viewmodel.MainViewModel
 
@@ -50,6 +57,8 @@ class BrowserFragment : Fragment() {
     private lateinit var adapter: TrackAdapter
     private lateinit var mainList: RecyclerView
     private lateinit var fab: ImageButton
+    private lateinit var bottomBar: View
+    private lateinit var bottomBarShadow: View
     private val tracks = mutableListOf<Track>()
 
     private val store: StoreDispatcher by lazy {
@@ -66,9 +75,11 @@ class BrowserFragment : Fragment() {
         requireContext().applicationContext.contentResolver
     }
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        viewModel = ViewModelProviders.of(activity!!).get(MainViewModel::class.java)
+    override fun onAttach(context: Context) {
+        super.onAttach(context)
+        activity?.let {
+            viewModel = ViewModelProvider(it).get(MainViewModel::class.java)
+        }
     }
 
     override fun onCreateView(
@@ -90,6 +101,11 @@ class BrowserFragment : Fragment() {
         return rootView
     }
 
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
+        loadTrackFromStore()
+    }
+
     override fun onResume() {
         super.onResume()
         refreshTracks()
@@ -103,7 +119,7 @@ class BrowserFragment : Fragment() {
         }
     }
 
-    override fun onCreateOptionsMenu(menu: Menu?, inflater: MenuInflater?) {
+    override fun onCreateOptionsMenu(menu: Menu, inflater: MenuInflater) {
         inflater?.inflate(R.menu.browser_menu, menu)
     }
 
@@ -118,16 +134,14 @@ class BrowserFragment : Fragment() {
 
     private fun exportToCsv() {
         GlobalScope.launch(context = Dispatchers.IO) {
-            store.getTracks { tracks ->
-                store.getClips { clips ->
-                    FileController().saveToCsv(tracks, clips) { result, file ->
-                        Toast.makeText(
-                            requireContext(),
-                            "$result: Save to ${file.path}",
-                            Toast.LENGTH_SHORT
-                        ).show()
-                    }
-                }
+            val tracks = store.getTracks()
+            val clips = store.getClips()
+            FileController().saveToCsv(tracks, clips) { result, file ->
+                Toast.makeText(
+                    requireContext(),
+                    "$result: Save to ${file.path}",
+                    Toast.LENGTH_SHORT
+                ).show()
             }
         }
     }
@@ -135,13 +149,14 @@ class BrowserFragment : Fragment() {
     private fun importFromCsv() {
         GlobalScope.launch(context = Dispatchers.IO) {
             // FIXME: should call refresh tracks after IO
-            FileController().readFromCsv { _, tracks, clips ->
-                for (track in tracks) {
-                    store.addTrack(track)
-                }
-                for (clip in clips) {
-                    store.upsertClip(clip)
-                }
+            val triple = FileController().readFromCsv()
+            val tracks = triple.second
+            val clips = triple.third
+            for (track in tracks) {
+                store.addTrack(track)
+            }
+            for (clip in clips) {
+                store.upsertClip(clip)
             }
         }
     }
@@ -149,7 +164,7 @@ class BrowserFragment : Fragment() {
     private fun initWidgets(root: View) {
         mainList = root.findViewById(android.R.id.list)
         fab = root.findViewById(R.id.fab)
-        adapter = TrackAdapter(requireActivity(), tracks, {
+        adapter = TrackAdapter(requireActivity(), viewLifecycleOwner.lifecycleScope, tracks, {
             (it.tag as? Track)?.let { clip ->
                 onTrackClicked(it, clip)
             }
@@ -161,8 +176,47 @@ class BrowserFragment : Fragment() {
 
         fab.setOnClickListener { chooseFile() }
 
+        bottomBar = root.findViewById(R.id.bottom_bar)
+        bottomBarShadow = root.findViewById(R.id.bottom_bar_shadow)
+        viewModel.currentTrack.observe(viewLifecycleOwner, Observer<Track> {
+            if (it == null) hideBottomBar() else showBottomBar(it)
+        })
+        loadTrackFromStore()
+
         mainList.adapter = adapter
         mainList.layoutManager = LinearLayoutManager(requireActivity())
+    }
+
+    private fun loadTrackFromStore() {
+        // init track from previous stored preferences
+        val prefs = PreferenceManager.getDefaultSharedPreferences(activity)
+        val trackId = prefs.getLong(PREF_KEY_TRACK_ID, -1)
+        viewLifecycleOwner.lifecycleScope.launch {
+            val ts = store.getTracks()
+            val tracks = ts.filter { it.id == trackId }
+            if (tracks.isNotEmpty() && tracks[0] != viewModel.currentTrack.value) {
+                viewModel.currentTrack.postValue(tracks[0])
+            }
+        }
+    }
+
+    private fun showBottomBar(track: Track) {
+        bottomBar.isVisible = true
+        bottomBarShadow.isVisible = true
+        bottomBar.setOnClickListener {
+            onTrackClicked(it, track)
+        }
+        bottomBar.findViewById<TextView>(R.id.bottom_bar_album).text =
+            "${track.album}"
+        bottomBar.findViewById<TextView>(R.id.bottom_bar_title).text =
+            "${track.displayTitle}"
+        bottomBar.findViewById<TextView>(R.id.bottom_bar_filename).text =
+            "${track.filename}"
+    }
+
+    private fun hideBottomBar() {
+        bottomBar.isVisible = false
+        bottomBarShadow.isVisible = false
     }
 
     private fun chooseFile() {
@@ -176,9 +230,22 @@ class BrowserFragment : Fragment() {
         if (tracks.any { it.uri == uri }) {
             return
         }
-        resolveFilename(uri) { name ->
-            val track = Track(uri = uri, name = name)
-            asyncAddTrack(track) {
+        viewLifecycleOwner.lifecycleScope.launch {
+            val md5 = calculateMd5(requireContext(), uri)
+            val fileName = TrackUtil.resolveFilename(requireContext(), uri)
+            if (fileName != null && md5 != null) {
+                val metadata = TrackUtil.retrieveMetaData(requireContext(), uri, md5)
+                val track = Track(
+                    uri = uri,
+                    filename = fileName,
+                    title = metadata.title ?: fileName,
+                    duration = metadata.duration,
+                    album = metadata.album ?: "",
+                    author = metadata.author ?: "",
+                    thumbnailFilePath = metadata.thumbnailFilePath,
+                    md5 = md5
+                )
+                store.addTrack(track)
                 refreshTracks()
             }
         }
@@ -195,7 +262,7 @@ class BrowserFragment : Fragment() {
         val editor = prefs.edit()
         editor.putLong(PREF_KEY_TRACK_ID, track.id)
         editor.commit()
-        activity?.supportFragmentManager?.popBackStack()
+        activity?.supportFragmentManager?.let { openPlayerFragment(it) }
     }
 
     private fun onTrackLongClicked(view: View, track: Track) {
@@ -224,26 +291,18 @@ class BrowserFragment : Fragment() {
     private fun refreshTracks() {
         // count clips number of each track
         val map = mutableMapOf<Long, Int>()
-        store.getClips { clips ->
+        viewLifecycleOwner.lifecycleScope.launch {
+            val clips = store.getClips()
             for (clip in clips) {
                 map[clip.trackId] = (map[clip.trackId] ?: 0) + 1
             }
-        }
-        store.getTracks { storedTracks ->
+            val storedTracks = store.getTracks()
             for (track in storedTracks) {
                 track.clipsNumber = map[track.id] ?: 0
             }
-            this.tracks.clear()
-            this.tracks.addAll(storedTracks)
+            tracks.clear()
+            tracks.addAll(storedTracks)
             adapter.notifyDataSetChanged()
-        }
-    }
-
-    private fun asyncAddTrack(track: Track, callback: () -> Unit) {
-        GlobalScope.launch {
-            store.addTrack(track) {
-                callback()
-            }
         }
     }
 
@@ -251,20 +310,6 @@ class BrowserFragment : Fragment() {
         GlobalScope.launch {
             store.removeTrack(track.id)
             callback()
-        }
-    }
-
-    private fun resolveFilename(uri: Uri, callback: (String) -> Unit) {
-        GlobalScope.launch {
-            contentResolver.query(uri, null, null, null, null)
-                ?.use { cursor ->
-                    val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-                    cursor.moveToFirst()
-                    val name = cursor.getString(nameIndex)
-                    launch(context = Dispatchers.Main) {
-                        callback(name)
-                    }
-                }
         }
     }
 }

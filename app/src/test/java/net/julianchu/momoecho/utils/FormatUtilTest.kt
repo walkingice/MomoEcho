@@ -4,7 +4,6 @@ import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
-import net.julianchu.momoecho.BuildConfig
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Before
@@ -14,7 +13,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
-@Config(manifest = Config.NONE, constants = BuildConfig::class)
+@Config(manifest = Config.NONE)
 class FormatUtilsTest {
 
     @Before

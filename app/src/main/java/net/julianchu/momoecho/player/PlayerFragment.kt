@@ -1,5 +1,6 @@
 package net.julianchu.momoecho.player
 
+import android.content.Context
 import android.os.Bundle
 import android.preference.PreferenceManager
 import android.support.v4.media.session.MediaControllerCompat
@@ -18,19 +19,19 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.PopupMenu
 import androidx.appcompat.widget.Toolbar
 import androidx.fragment.app.Fragment
-import androidx.lifecycle.ViewModelProviders
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.room.Room
+import kotlinx.coroutines.launch
 import net.julianchu.momoecho.Const
 import net.julianchu.momoecho.Const.Companion.PREF_KEY_PERIOD
-import net.julianchu.momoecho.Const.Companion.PREF_KEY_TRACK_ID
 import net.julianchu.momoecho.ProgressController
 import net.julianchu.momoecho.R
 import net.julianchu.momoecho.StoreDispatcher
 import net.julianchu.momoecho.db.room.RoomStore
 import net.julianchu.momoecho.model.Clip
-import net.julianchu.momoecho.openBrowserFragment
 import net.julianchu.momoecho.openEditClipFragment
 import net.julianchu.momoecho.player.ui.ClipAdapter
 import net.julianchu.momoecho.utils.showConfirmDialog
@@ -43,6 +44,8 @@ fun createPlayerFragment(): PlayerFragment {
     return PlayerFragment()
 }
 
+private const val TAG = "PlayerFragment"
+
 class PlayerFragment : Fragment() {
     private val data = mutableListOf<Clip>()
 
@@ -53,7 +56,7 @@ class PlayerFragment : Fragment() {
     private lateinit var progressCtrl: ProgressController
     private lateinit var btnPlay: ImageButton
     private lateinit var btnStop: ImageButton
-    private lateinit var hint: TextView
+    private lateinit var title: TextView
     private lateinit var filePath: TextView
     private lateinit var lengthView: TextView
     private var period = 1000L
@@ -69,19 +72,10 @@ class PlayerFragment : Fragment() {
             .let { StoreDispatcher(it) }
     }
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        viewModel = ViewModelProviders.of(requireActivity()).get(MainViewModel::class.java)
-
-        // init track from previous stored preferences
-        val prefs = PreferenceManager.getDefaultSharedPreferences(activity)
-        period = prefs.getLong(PREF_KEY_PERIOD, 1000L)
-        val trackId = prefs.getLong(PREF_KEY_TRACK_ID, -1)
-        store.getTracks { ts ->
-            val tracks = ts.filter { it.id == trackId }
-            if (tracks.isNotEmpty()) {
-                viewModel.currentTrack.postValue(tracks[0])
-            }
+    override fun onAttach(context: Context) {
+        super.onAttach(context)
+        activity?.let {
+            viewModel = ViewModelProvider(it).get(MainViewModel::class.java)
         }
     }
 
@@ -101,13 +95,16 @@ class PlayerFragment : Fragment() {
         return rootView
     }
 
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
+        loadPreferences()
+    }
+
     override fun onStart() {
         super.onStart()
         viewModel.mediaCtrl.registerCallback(ctrlCallback)
         viewModel.editClip = null
-        viewModel.mediaCtrl.sendCommand(
-            Const.COMMAND_UPDATE_CLIP, null, null
-        )
+        viewModel.mediaCtrl.sendCommand(Const.COMMAND_UPDATE_CLIP, null, null)
         loadClips()
     }
 
@@ -117,13 +114,12 @@ class PlayerFragment : Fragment() {
         saveClips()
     }
 
-    override fun onCreateOptionsMenu(menu: Menu?, inflater: MenuInflater?) {
-        inflater?.inflate(R.menu.main_menu, menu)
+    override fun onCreateOptionsMenu(menu: Menu, inflater: MenuInflater) {
+        inflater.inflate(R.menu.main_menu, menu)
     }
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         when (item.itemId) {
-            R.id.menu_choose -> openBrowserFragment(requireActivity().supportFragmentManager)
             R.id.menu_period -> showPeriodDialog()
             else -> return false
         }
@@ -131,14 +127,15 @@ class PlayerFragment : Fragment() {
     }
 
     private fun initWidgets(rootView: View) {
-        filePath = rootView.findViewById(R.id.filepath)
+        filePath = rootView.findViewById(R.id.filename)
         lengthView = rootView.findViewById(R.id.length)
         mainList = rootView.findViewById(android.R.id.list)
-        hint = rootView.findViewById(android.R.id.hint)
+        title = rootView.findViewById(R.id.track_title)
         progressBar = rootView.findViewById(android.R.id.progress)
-        progressCtrl = ProgressController(progressBar)
+        progressCtrl = ProgressController(progressBar = progressBar)
 
-        filePath.text = viewModel.currentTrack.value?.displayText
+        title.text = viewModel.currentTrack.value?.displayTitle
+        filePath.text = viewModel.currentTrack.value?.filename
         progressBar.max = viewModel.duration
         lengthView.text = viewModel.duration.toReadable()
 
@@ -183,6 +180,7 @@ class PlayerFragment : Fragment() {
                 viewModel.editClip = Clip(
                     startTime = startTime,
                     endTime = viewModel.duration,
+                    isEnabled = true,
                     trackId = it.id
                 )
                 openEditClipFragment(requireActivity().supportFragmentManager)
@@ -190,11 +188,17 @@ class PlayerFragment : Fragment() {
         }
     }
 
+    private fun loadPreferences() {
+        val prefs = PreferenceManager.getDefaultSharedPreferences(activity)
+        period = prefs.getLong(PREF_KEY_PERIOD, 1000L)
+    }
+
     /**
      * Save clips to database
      */
     private fun saveClips() {
-        viewModel.currentTrack.value?.let { track ->
+        val track = viewModel.currentTrack.value ?: return
+        viewLifecycleOwner.lifecycleScope.launch {
             store.removeClipsOfTrack(track.id)
             for (c in data) {
                 store.upsertClip(c)
@@ -206,19 +210,20 @@ class PlayerFragment : Fragment() {
      * load clips from database
      */
     private fun loadClips() {
-        viewModel.currentTrack.value?.let { track ->
-            store.queryClips(track.id) { clips ->
-                data.clear()
-                data.addAll(clips)
-                sortClips(data)
-                adapter.notifyDataSetChanged()
-            }
+        val track = viewModel.currentTrack.value ?: return
+        viewLifecycleOwner.lifecycleScope.launch {
+            val clips = store.queryClips(track.id)
+            data.clear()
+            data.addAll(clips)
+            sortClips(data)
+            adapter.notifyDataSetChanged()
         }
     }
 
     private fun onClipToggled(view: View, clip: Clip) {
         clip.isEnabled = !clip.isEnabled
-        store.upsertClip(clip) {
+        viewLifecycleOwner.lifecycleScope.launch {
+            store.upsertClip(clip)
             val extras = Bundle().also {
                 it.putLong(Const.EXTRA_KEY_CLIP, clip.id)
             }
@@ -238,7 +243,8 @@ class PlayerFragment : Fragment() {
                 requireContext(),
                 "Delete this clip?"
             ) {
-                store.removeClip(clip.id) {
+                viewLifecycleOwner.lifecycleScope.launch {
+                    store.removeClip(clip.id)
                     val extras = Bundle().also { it.putLong(Const.EXTRA_KEY_CLIP, clip.id) }
                     viewModel.mediaCtrl.sendCommand(
                         Const.COMMAND_REMOVE_CLIP, extras, null
@@ -264,25 +270,22 @@ class PlayerFragment : Fragment() {
     }
 
     private fun showPeriodDialog() {
-        val periodView =
-            showSingleInputDialog(requireActivity(), R.layout.period_dialog) {
-                it?.let { str ->
-                    period = str.toLong()
-                    val prefs = PreferenceManager.getDefaultSharedPreferences(activity)
-                    val editor = prefs.edit()
-                    editor.putLong(PREF_KEY_PERIOD, period)
-                    editor.apply()
-                }
+        val periodView = showSingleInputDialog(requireActivity(), R.layout.period_dialog) {
+            it?.let { str ->
+                period = str.toLong()
+                val prefs = PreferenceManager.getDefaultSharedPreferences(activity)
+                val editor = prefs.edit()
+                editor.putLong(PREF_KEY_PERIOD, period)
+                editor.apply()
             }
+        }
         periodView.setText(period.toString())
     }
 
     inner class CtrlCallback : MediaControllerCompat.Callback() {
         override fun onPlaybackStateChanged(psc: PlaybackStateCompat?) {
             super.onPlaybackStateChanged(psc)
-            if (psc == null) {
-                return
-            }
+            psc ?: return
             val extras = psc.extras
             val playingClipId = extras?.getLong(Const.EXTRA_KEY_CLIP) ?: -1
 
@@ -352,7 +355,8 @@ class PlayerFragment : Fragment() {
 
         private fun updateInfo(extras: Bundle) {
             viewModel.duration = extras.getInt(Const.EXTRA_KEY_INFO_DURATION, 0)
-            filePath.text = viewModel.currentTrack.value?.displayText
+            title.text = viewModel.currentTrack.value?.displayTitle
+            filePath.text = viewModel.currentTrack.value?.filename
             progressBar.max = viewModel.duration
             lengthView.text = viewModel.duration.toReadable()
             updateClips(extras)
@@ -361,7 +365,8 @@ class PlayerFragment : Fragment() {
         // a clip might be added, removed or edited
         private fun updateClip(extras: Bundle) {
             val id = extras.getLong(Const.EXTRA_KEY_CLIP)
-            store.getClip(id) { clip ->
+            viewLifecycleOwner.lifecycleScope.launch {
+                val clip = store.getClip(id)
                 if (clip == null) {
                     // remove clip
                     var targetIdx = -1
@@ -393,9 +398,10 @@ class PlayerFragment : Fragment() {
         }
 
         private fun updateClips(extras: Bundle) {
-            store.queryClips(extras.getLong(Const.EXTRA_KEY_TRACK)) {
+            viewLifecycleOwner.lifecycleScope.launch {
+                val clips = store.queryClips(extras.getLong(Const.EXTRA_KEY_TRACK))
                 data.clear()
-                data.addAll(it)
+                data.addAll(clips)
                 sortClips(data)
                 adapter.notifyDataSetChanged()
             }
