@@ -1,0 +1,32 @@
+# This file is the top-most EditorConfig file
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+indent_size = 4
+indent_style = space
+insert_final_newline = true
+max_line_length = 100
+tab_width = 4
+trim_trailing_whitespace = true
+continuation_indent_size=4
+ij_continuation_indent_size = 4
+ij_smart_tabs = false
+
+[{*.kt,*.kts}]
+ij_kotlin_code_style_defaults = KOTLIN_OFFICIAL
+
+[*.java]
+ij_java_class_count_to_use_import_on_demand = 99
+ij_java_names_count_to_use_import_on_demand = 99
+ij_java_imports_layout = android.**,|,androidx.**,|,com.**,|,junit.**,|,net.**,|,org.**,|,java.**,|,javax.**,|,*,|,$*,|
+ij_java_layout_static_imports_separately = true
+ij_java_use_single_class_imports = true
+
+[{*.xsl,*.xsd,*.xml}]
+ij_continuation_indent_size = 4
+ij_xml_use_custom_settings = true
+ij_xml_keep_indents_on_empty_lines = false
+ij_xml_line_comment_at_first_column = true
+
